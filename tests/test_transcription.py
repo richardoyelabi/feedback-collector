@@ -151,10 +151,18 @@ def test_explicit_cuda_does_not_fall_back():
         transcriber.transcribe(Path("x.webm"))
 
 
+def test_faster_whisper_can_decode_a_recording(box_clip):
+    from faster_whisper.audio import decode_audio
+
+    audio = decode_audio(str(box_clip))
+    assert len(audio) / 16000 == pytest.approx(6.0, abs=0.1)
+
+
 @pytest.mark.slow
 def test_real_model_on_sample():
     sample = os.environ.get("FEEDBACK_COLLECTOR_SAMPLE") or pytest.skip("set FEEDBACK_COLLECTOR_SAMPLE to a narrated recording")
-    transcript = WhisperTranscriber().transcribe(Path(sample))
+    model = os.environ.get("FEEDBACK_COLLECTOR_MODEL", transcription.DEFAULT_MODEL)
+    transcript = WhisperTranscriber(model=model).transcribe(Path(sample))
     print(f"device={transcript.device} segments={len(transcript.segments)}")
     assert transcript.segments
     assert [s.start for s in transcript.segments] == sorted(s.start for s in transcript.segments)
