@@ -147,3 +147,7 @@ python3 -m venv .venv
 ```
 
 The tests build tiny synthetic clips with ffmpeg, so `ffmpeg` and `ffprobe` must be on your `PATH`.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,6 +8,8 @@ version = "0.1.0"
 description = "Turn narrated screen recordings into an interleaved transcript and screenshot report for Claude Code"
 readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "faster-whisper>=1.2",
     # faster-whisper 1.2.1 passes av.open(metadata_errors=...), which PyAV 19 removed.
