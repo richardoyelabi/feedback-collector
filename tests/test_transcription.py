@@ -100,6 +100,20 @@ def test_download_failure_is_not_treated_as_a_cuda_failure(caplog):
     assert "CUDA" not in caplog.text
 
 
+def test_download_error_suggests_a_way_forward():
+    def locator(name, local_files_only):
+        if local_files_only:
+            raise transcription.LocalEntryNotFoundError("not cached")
+        raise RuntimeError("read timed out")
+
+    with pytest.raises(ModelDownloadError) as error_info:
+        make(model_locator=locator, model_factory=returning(FakeModel())).transcribe(Path("x.webm"))
+    message = str(error_info.value)
+    assert "resume" not in message  # huggingface_hub discards partial downloads, so nothing resumes
+    assert "--model small" in message
+    assert "--model /path/to/model-folder" in message
+
+
 def test_model_is_located_once_when_falling_back_to_cpu():
     located = []
     models = {"cuda": FakeModel(fail=RuntimeError("cuBLAS failed")), "cpu": FakeModel([fake_segment])}

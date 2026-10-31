@@ -107,6 +107,26 @@ This adds NVIDIA's cuBLAS for CUDA 12 as a pip package. `feedback-collector` loa
 - `--device cpu` skips the GPU entirely. `--device cuda` fails instead of falling back.
 - The first run downloads the speech model (about 1.6 GB for `large-v3-turbo`) into `~/.cache/huggingface`. Later runs load it from there and never touch the network.
 
+## Troubleshooting
+
+**The model download keeps failing.** On a slow or unstable connection the one-time download can break partway. huggingface_hub discards partial files, so each rerun starts from zero. You have two options:
+
+- Use a smaller model: `--model small` (about 480 MB) or `--model base` (about 145 MB), instead of the default `large-v3-turbo` (about 1.6 GB).
+- Download the model folder yourself with a tool that resumes, then pass the folder to `--model`:
+
+  ```bash
+  dest=~/.cache/feedback-collector/models/faster-whisper-small
+  mkdir -p "$dest"
+  for f in config.json tokenizer.json vocabulary.txt model.bin; do
+    until curl -L -C - -o "$dest/$f" "https://huggingface.co/Systran/faster-whisper-small/resolve/main/$f"; do sleep 5; done
+  done
+  .venv/bin/feedback-collector process rec.webm --model "$dest"
+  ```
+
+**"has no audio track".** The recording has no sound at all. Record again with the microphone on.
+
+**"CUDA transcription failed … retrying on CPU".** The GPU couldn't be used (driver or library problem), so the run continued on the CPU. Check that the `gpu` extra is installed and `nvidia-smi` works.
+
 ## Development
 
 ```bash

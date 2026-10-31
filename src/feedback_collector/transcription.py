@@ -79,7 +79,9 @@ class WhisperTranscriber:
         except Exception as error:
             raise ModelDownloadError(
                 f"could not download speech model {self.model}: {error}. "
-                "Check your network connection and run again; the download resumes where it stopped."
+                "Check your network connection and run again. On a slow or unreliable connection, "
+                "use a smaller model (--model small or --model base), or download the model folder "
+                "with a resumable tool and pass it with --model /path/to/model-folder."
             ) from error
 
     def transcribe(self, video: Path, offset: float = 0.0) -> Transcript:
