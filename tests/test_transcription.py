@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from feedback_collector import transcription
@@ -9,13 +10,18 @@ from feedback_collector.models import Segment, Word
 from feedback_collector.transcription import ModelDownloadError, WhisperTranscriber
 
 
+AUDIO = np.zeros(16000 * 10, dtype=np.float32)
+
+
 class FakeModel:
     def __init__(self, segments=(), fail=None):
         self.segments = list(segments)
         self.fail = fail
+        self.audio = None
         self.kwargs = None
 
-    def transcribe(self, path, **kwargs):
+    def transcribe(self, audio, **kwargs):
+        self.audio = audio
         self.kwargs = kwargs
 
         def generate():
@@ -43,7 +49,13 @@ def cached_locator(name, local_files_only):
 
 
 def make(**overrides):
-    options = {"device": "cpu", "cuda_check": lambda: False, "model_locator": cached_locator}
+    options = {
+        "device": "cpu",
+        "cuda_check": lambda: False,
+        "model_locator": cached_locator,
+        "audio_loader": lambda video: AUDIO,
+        "speech_finder": lambda audio: [1.0, 3.0],
+    }
     options.update(overrides)
     return WhisperTranscriber(**options)
 
@@ -57,7 +69,34 @@ def test_segments_are_converted_and_shifted():
 def test_options_reach_faster_whisper():
     model = FakeModel()
     make(language="en", hotwords="Stripe, SKU", model_factory=returning(model)).transcribe(Path("x.webm"))
-    assert model.kwargs == {"language": "en", "hotwords": "Stripe, SKU", "vad_filter": True, "word_timestamps": True}
+    assert model.kwargs == {
+        "language": "en",
+        "hotwords": "Stripe, SKU",
+        "word_timestamps": True,
+        "vad_filter": False,
+        "clip_timestamps": [1.0, 3.0],
+    }
+
+
+def test_speech_is_decoded_clip_by_clip():
+    # Whisper's own VAD glues speech together, which drags words across long silences.
+    model = FakeModel()
+    make(speech_finder=lambda audio: [10.0, 11.0, 41.0, 42.0], model_factory=returning(model)).transcribe(Path("x.webm"))
+    assert model.audio is AUDIO
+    assert model.kwargs["clip_timestamps"] == [10.0, 11.0, 41.0, 42.0]
+    assert model.kwargs["vad_filter"] is False
+
+
+def test_no_speech_skips_the_model():
+    loads = []
+    transcriber = make(speech_finder=lambda audio: [], model_factory=lambda *args: loads.append(args) or FakeModel())
+    transcript = transcriber.transcribe(Path("x.webm"))
+    assert transcript.segments == ()
+    assert loads == []
+
+
+def test_find_speech_in_silence_is_empty():
+    assert transcription.find_speech(np.zeros(16000 * 5, dtype=np.float32)) == []
 
 
 def test_located_model_path_is_what_gets_loaded():

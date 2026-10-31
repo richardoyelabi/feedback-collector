@@ -5,6 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
+import numpy as np
 from huggingface_hub.errors import LocalEntryNotFoundError
 
 from feedback_collector.cuda_libs import cuda_ready
@@ -12,6 +13,7 @@ from feedback_collector.models import Segment, Transcript, Word
 
 DEFAULT_MODEL = "large-v3-turbo"
 COMPUTE_TYPES = {"cuda": "float16", "cpu": "int8"}
+SAMPLE_RATE = 16000
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,20 @@ def load_whisper_model(path: str, device: str, compute_type: str) -> Any:
     return WhisperModel(path, device=device, compute_type=compute_type)
 
 
+def load_audio(video: Path) -> np.ndarray:
+    from faster_whisper.audio import decode_audio
+
+    return decode_audio(str(video), sampling_rate=SAMPLE_RATE)
+
+
+def find_speech(audio: np.ndarray) -> list[float]:
+    """Speech stretches as a flat [start, end, start, end, ...] list in seconds."""
+    from faster_whisper.vad import VadOptions, get_speech_timestamps
+
+    chunks = get_speech_timestamps(audio, VadOptions())
+    return [round(chunk[edge] / SAMPLE_RATE, 3) for chunk in chunks for edge in ("start", "end")]
+
+
 def _convert(segment: Any, offset: float) -> Segment:
     words = tuple(
         Word(word.start + offset, word.end + offset, word.word.strip()) for word in (segment.words or ())
@@ -55,6 +71,8 @@ class WhisperTranscriber:
         model_factory: Callable[[str, str, str], Any] = load_whisper_model,
         cuda_check: Callable[[], bool] = cuda_ready,
         model_locator: Callable[[str, bool], str] = locate_whisper_model,
+        audio_loader: Callable[[Path], np.ndarray] = load_audio,
+        speech_finder: Callable[[np.ndarray], list[float]] = find_speech,
     ) -> None:
         self.model = model
         self.device = device
@@ -63,6 +81,8 @@ class WhisperTranscriber:
         self.model_factory = model_factory
         self.cuda_check = cuda_check
         self.model_locator = model_locator
+        self.audio_loader = audio_loader
+        self.speech_finder = speech_finder
 
     def _devices(self) -> list[str]:
         if self.device == "auto":
@@ -85,18 +105,26 @@ class WhisperTranscriber:
             ) from error
 
     def transcribe(self, video: Path, offset: float = 0.0) -> Transcript:
+        audio = self.audio_loader(video)
+        clips = self.speech_finder(audio)
+        if not clips:
+            return Transcript((), self.language or "", self.model, "none")
+
         # Located once, outside the device fallback, so a network error is never mistaken for a CUDA one.
         model_path = self._locate()
         devices = self._devices()
         for device in devices:
             try:
                 model = self.model_factory(model_path, device, COMPUTE_TYPES[device])
+                # Decoding each speech stretch on its own keeps word times true to the recording;
+                # faster-whisper's vad_filter glues speech together and can drag words across silences.
                 segments, info = model.transcribe(
-                    str(video),
+                    audio,
                     language=self.language,
                     hotwords=self.hotwords,
-                    vad_filter=True,
                     word_timestamps=True,
+                    vad_filter=False,
+                    clip_timestamps=clips,
                 )
                 # A missing cuBLAS only surfaces once segments are decoded, so convert inside the try.
                 converted = tuple(_convert(segment, offset) for segment in segments)
