@@ -4,7 +4,7 @@ import pytest
 
 from conftest import NARRATION, FakeTranscriber
 from feedback_collector.cli import build_parser, main
-from feedback_collector.transcription import ModelDownloadError
+from feedback_collector.transcription import CudaUnavailableError, ModelDownloadError
 
 
 def fake(args):
@@ -55,6 +55,17 @@ def test_model_download_failure_exits_with_message(box_clip, tmp_path, capsys):
     code = main(["process", str(box_clip), "--out", str(tmp_path / "o")], transcriber_factory=lambda args: OfflineTranscriber())
     assert code == 1
     assert "error: could not download speech model large-v3-turbo" in capsys.readouterr().err
+
+
+class NoGpuTranscriber:
+    def transcribe(self, video, offset=0.0):
+        raise CudaUnavailableError("--device cuda was requested but no usable CUDA GPU was found")
+
+
+def test_unusable_gpu_exits_with_message(box_clip, tmp_path, capsys):
+    code = main(["process", str(box_clip), "--out", str(tmp_path / "o")], transcriber_factory=lambda args: NoGpuTranscriber())
+    assert code == 1
+    assert "error: --device cuda was requested" in capsys.readouterr().err
 
 
 def test_bad_time_is_a_usage_error(box_clip):

@@ -22,6 +22,10 @@ class ModelDownloadError(RuntimeError):
     pass
 
 
+class CudaUnavailableError(RuntimeError):
+    pass
+
+
 class Transcriber(Protocol):
     def transcribe(self, video: Path, offset: float = 0.0) -> Transcript: ...
 
@@ -87,6 +91,12 @@ class WhisperTranscriber:
     def _devices(self) -> list[str]:
         if self.device == "auto":
             return ["cuda", "cpu"] if self.cuda_check() else ["cpu"]
+        # The check also preloads cuBLAS, which CTranslate2 needs before it can use the GPU.
+        if self.device == "cuda" and not self.cuda_check():
+            raise CudaUnavailableError(
+                "--device cuda was requested but no usable CUDA GPU was found. Install the gpu extra "
+                '(pip install -e ".[gpu]") and check that nvidia-smi works, or use --device auto.'
+            )
         return [self.device]
 
     def _locate(self) -> str:
@@ -110,9 +120,9 @@ class WhisperTranscriber:
         if not clips:
             return Transcript((), self.language or "", self.model, "none")
 
+        devices = self._devices()
         # Located once, outside the device fallback, so a network error is never mistaken for a CUDA one.
         model_path = self._locate()
-        devices = self._devices()
         for device in devices:
             try:
                 model = self.model_factory(model_path, device, COMPUTE_TYPES[device])

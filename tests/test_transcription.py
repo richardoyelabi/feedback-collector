@@ -7,7 +7,7 @@ import pytest
 
 from feedback_collector import transcription
 from feedback_collector.models import Segment, Word
-from feedback_collector.transcription import ModelDownloadError, WhisperTranscriber
+from feedback_collector.transcription import CudaUnavailableError, ModelDownloadError, WhisperTranscriber
 
 
 AUDIO = np.zeros(16000 * 10, dtype=np.float32)
@@ -182,6 +182,22 @@ def test_cuda_failure_while_reading_segments_retries_on_cpu():
     transcript = make(device="auto", cuda_check=lambda: True, model_factory=factory).transcribe(Path("x.webm"))
     assert transcript.device == "cpu"
     assert calls == [("cuda", "float16"), ("cpu", "int8")]
+
+
+def test_explicit_cuda_prepares_the_gpu_libraries():
+    checks = []
+    make(device="cuda", cuda_check=lambda: checks.append(True) or True, model_factory=returning(FakeModel())).transcribe(
+        Path("x.webm")
+    )
+    assert checks == [True]
+
+
+def test_explicit_cuda_without_a_usable_gpu_says_so():
+    loads = []
+    transcriber = make(device="cuda", cuda_check=lambda: False, model_factory=lambda *args: loads.append(args) or FakeModel())
+    with pytest.raises(CudaUnavailableError, match="--device auto"):
+        transcriber.transcribe(Path("x.webm"))
+    assert loads == []
 
 
 def test_explicit_cuda_does_not_fall_back():

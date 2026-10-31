@@ -104,7 +104,7 @@ Transcription uses [faster-whisper](https://github.com/SYSTRAN/faster-whisper). 
 This adds NVIDIA's cuBLAS for CUDA 12 as a pip package. `feedback-collector` loads it itself at startup, so you don't need a system CUDA toolkit, sudo, or `LD_LIBRARY_PATH`. Only the NVIDIA driver must be installed.
 
 - With the default `--device auto`, a GPU problem prints a warning and the whole transcription reruns on the CPU (int8). This is slower, but you still get a report.
-- `--device cpu` skips the GPU entirely. `--device cuda` fails instead of falling back.
+- `--device cpu` skips the GPU entirely. `--device cuda` insists on the GPU and stops with an error if it can't be used, instead of falling back.
 - The first run downloads the speech model (about 1.6 GB for `large-v3-turbo`) into `~/.cache/huggingface`. Later runs load it from there and never touch the network.
 
 ## Performance

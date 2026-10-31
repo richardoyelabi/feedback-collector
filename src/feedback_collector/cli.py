@@ -10,7 +10,13 @@ from feedback_collector.media import MediaError
 from feedback_collector.pipeline import Options, OutputExistsError, default_out_dir, grab_frames, process
 from feedback_collector.report import handoff_prompt, visible_sections
 from feedback_collector.timefmt import parse_time
-from feedback_collector.transcription import DEFAULT_MODEL, ModelDownloadError, Transcriber, WhisperTranscriber
+from feedback_collector.transcription import (
+    DEFAULT_MODEL,
+    CudaUnavailableError,
+    ModelDownloadError,
+    Transcriber,
+    WhisperTranscriber,
+)
 
 
 def _positive_int(text: str) -> int:
@@ -87,7 +93,7 @@ def main(
             force=args.force,
         )
         report = process(video, options, (transcriber_factory or _transcriber)(args))
-    except (MediaError, OutputExistsError, ModelDownloadError) as error:
+    except (MediaError, OutputExistsError, ModelDownloadError, CudaUnavailableError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
 
