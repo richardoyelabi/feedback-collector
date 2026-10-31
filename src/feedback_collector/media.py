@@ -1,8 +1,7 @@
 """Thin wrappers around ffprobe and ffmpeg."""
 
-import bisect
 import json
-import re
+import math
 import shutil
 import subprocess
 import tempfile
@@ -12,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-_SHOWINFO_TIME = re.compile(r"Parsed_showinfo.*\bpts_time:\s*(-?[0-9.]+)")
+EXTRACT_FPS = 10
 
 
 class MediaError(Exception):
@@ -113,35 +112,39 @@ def gray_samples(video: Path, info: MediaInfo, fps: float, width: int) -> np.nda
     return np.frombuffer(raw, dtype=np.uint8).reshape(-1, sample_height, sample_width)
 
 
-def select_expression(times: Sequence[float]) -> str:
-    return "+".join(f"gte(t,{t:.6f})*(isnan(prev_pts)+lt(prev_pts*TB,{t:.6f}))" for t in times)
+def frame_slots(times: Sequence[float], last_frame_time: float, fps: int = EXTRACT_FPS) -> list[int]:
+    """Index of the first slot at or after each time on an fps grid that starts at the first frame."""
+    last_slot = math.floor(last_frame_time * fps + 1e-6)
+    return [min(max(math.ceil(time * fps - 1e-6), 0), last_slot) for time in times]
 
 
 def extract_frames(video: Path, info: MediaInfo, targets: Sequence[tuple[float, Path]], width: int) -> None:
     if not targets:
         return
-    clamped = [(min(max(time, 0.0), info.last_frame_time), destination) for time, destination in targets]
-    absolute = sorted({time + info.video_start for time, _ in clamped})
+    slots = frame_slots([time for time, _ in targets], info.last_frame_time)
+    wanted = sorted(set(slots))
+    selection = "+".join(f"eq(n,{slot})" for slot in wanted)
     frame_width, frame_height = scaled_size(info.width, info.height, width)
 
     with tempfile.TemporaryDirectory() as scratch:
-        result = _run([
-            "ffmpeg", "-hide_banner", "-nostats", "-loglevel", "info",
-            "-i", str(video.resolve()), "-an",
-            "-vf", f"select='{select_expression(absolute)}',scale={frame_width}:{frame_height},showinfo",
+        # The fps filter puts frames on a fixed grid counted from the first frame and repeats the last
+        # frame through recorder gaps, so selecting by index never depends on time bases, start offsets
+        # or ffmpeg's rounded printouts.
+        _run([
+            "ffmpeg", "-v", "error", "-i", str(video.resolve()), "-an",
+            "-vf", f"fps={EXTRACT_FPS},select='{selection}',scale={frame_width}:{frame_height}",
             "-fps_mode", "passthrough", "-start_number", "0",
             str(Path(scratch) / "%05d.png"),
         ])
-        stderr = result.stderr.decode(errors="replace")
-        selected = [float(t) - info.video_start for t in _SHOWINFO_TIME.findall(stderr)]
         files = sorted(Path(scratch).glob("*.png"))
-        if not selected or len(files) != len(selected):
-            raise MediaError(f"expected {len(selected)} frames from ffmpeg but found {len(files)}")
-        for time, destination in clamped:
-            index = min(bisect.bisect_left(selected, time - 1e-3), len(files) - 1)
+        if not files:
+            raise MediaError(f"ffmpeg wrote no frames for {video.name}")
+        # A grid slot past the real end is the only one that can be missing; it takes the last frame.
+        file_for_slot = {slot: files[min(index, len(files) - 1)] for index, slot in enumerate(wanted)}
+        for slot, (_, destination) in zip(slots, targets):
             destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(files[index], destination)
+            shutil.copyfile(file_for_slot[slot], destination)
 
-    missing = [str(destination) for _, destination in clamped if not destination.exists()]
+    missing = [str(destination) for _, destination in targets if not destination.exists()]
     if missing:
         raise MediaError(f"frames were not written: {', '.join(missing)}")

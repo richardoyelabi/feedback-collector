@@ -80,6 +80,35 @@ def test_extract_frames_clamps_past_end(box_clip, tmp_path):
     assert late.exists()
 
 
+def box_is_black(path, width=160, height=100):
+    return png_gray(path, width, height)[40:60, 70:90].mean() < 60
+
+
+def test_extract_frames_is_exact_past_1000_seconds(long_clip, tmp_path):
+    targets = [(t, tmp_path / f"{t}.png") for t in (1004.5, 1005.032, 1006.5)]
+    extract_frames(long_clip, probe(long_clip), targets, width=64)
+    assert [png_gray(path, 64, 40).mean() < 60 for _, path in targets] == [False, True, False]
+
+
+def test_extract_frames_handles_a_nonzero_start_time(offset_clip, tmp_path):
+    before, after = tmp_path / "before.png", tmp_path / "after.png"
+    extract_frames(offset_clip, probe(offset_clip), [(1.0, before), (3.5, after)], width=160)
+    assert (box_is_black(before), box_is_black(after)) == (False, True)
+
+
+def test_extract_frames_clamps_past_end_with_a_fine_time_base(mp4_clip, tmp_path):
+    late = tmp_path / "late.png"
+    extract_frames(mp4_clip, probe(mp4_clip), [(99.0, late)], width=160)
+    assert late.exists()
+    assert box_is_black(late)
+
+
+def test_extract_frames_shows_the_screen_as_it_was_during_a_frame_gap(vfr_clip, tmp_path):
+    during_gap = tmp_path / "gap.png"
+    extract_frames(vfr_clip, probe(vfr_clip), [(2.5, during_gap)], width=160)
+    assert not box_is_black(during_gap)
+
+
 def test_awkward_paths_work(box_clip, tmp_path):
     video = tmp_path / "rec 09:08:00 50%.webm"
     shutil.copy(box_clip, video)

@@ -66,6 +66,7 @@ Turn one narrated screen recording (for example a Kooha WebM/MP4 of a web app) i
    - Only `nvidia-cublas-cu12` is needed: CTranslate2's Linux wheels are built against CUDA 12.8 with cuDNN off.
    - `nvidia/cublas/lib/libcublas.so.12` is preloaded by path before faster-whisper is used, so nobody touches `LD_LIBRARY_PATH`.
    - `--device auto` retries the whole transcription on CPU int8 if CUDA fails. A missing cuBLAS only errors on the first encode, so the retry covers consuming the segments, not just loading the model.
+   - `--device cuda` runs the same readiness check, which also preloads cuBLAS, and stops with a clear error if no GPU is usable.
 4. **UI-change detection.**
    - ffmpeg decodes the video to a 2 fps, 160 px wide grayscale pipe.
    - A change means at least 0.3% of pixels differ by more than 16 levels. This catches toasts, inline errors and menus, while cursor movement stays below it.
@@ -78,12 +79,14 @@ Turn one narrated screen recording (for example a Kooha WebM/MP4 of a web app) i
    - Within a level, frames are spread evenly across the timeline.
 7. **Images.** PNG, at most 1600 px wide (a 2560×1600 screen becomes 1600×1000, about 2.1k Claude tokens), never upscaled. `--frame-width 2560` helps with tiny text.
 8. **Extraction.**
-   - Every frame comes out of a single ffmpeg pass, using a `select` filter that takes the first frame at or after each anchor time, plus `showinfo` to map files to anchors. Kooha's VP8 output has almost no keyframes, so per-frame seeking would take minutes on long recordings.
-   - Anchors are clamped to the last frame, and every expected PNG is checked.
+   - Every frame comes out of a single ffmpeg pass. Kooha's VP8 output has almost no keyframes, so per-frame seeking would take minutes on long recordings.
+   - The chain is `fps=10,select='eq(n,…)+…',scale=…`. The fps filter puts frames on a 0.1 s grid counted from the first frame and repeats the last frame through gaps. So an anchor gets the screen as it was at that moment (rounded up to the next 0.1 s), even on variable-frame-rate recordings that emit no frames while the screen is still. Selecting by grid index avoids every dependence on time bases, container start offsets and ffmpeg's rounded time printouts.
+   - Anchors are clamped to the last grid slot, and every expected PNG is checked.
 9. **Probing.** Duration falls back to the last packet time when the container reports `N/A`. A file with no audio stream stops `process` with a clear message.
 10. **Output.**
     - The default is `<video dir>/<stem>-feedback/`, and `--out` overrides it. Frames are named like `frames/00-01-23.4_speech.png`.
     - `--force` replaces only the tool's own files (`report.md`, `report.json`, `transcript.vtt`, `frames/`) and keeps anything else in the folder.
+    - An existing report is refused before any work starts. With `--force`, it's removed only once transcription and frame selection have succeeded, so a failed run leaves it intact.
 
 ## `report.md` shape
 
