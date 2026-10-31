@@ -49,6 +49,7 @@ Turn one narrated screen recording (for example a Kooha WebM/MP4 of a web app) i
 - Readable code with sparse comments and double quotes.
 - A README plus this design doc.
 - No network use after the one-time model download.
+- PyAV is capped below 19: faster-whisper 1.2.1 still passes the `av.open(metadata_errors=…)` argument that PyAV 19 removed. Lift the cap once a faster-whisper release includes the upstream fix.
 
 ## Decisions
 
@@ -56,7 +57,9 @@ Turn one narrated screen recording (for example a Kooha WebM/MP4 of a web app) i
 2. **Transcription.**
    - faster-whisper with default model `large-v3-turbo`; `--model large-v3` gives maximum accuracy.
    - `--vocab "Term, Term"` goes into `hotwords`, which is re-sent with every 30 s window. `initial_prompt` stops influencing the output after about the first minute.
-   - VAD and word timestamps are on.
+   - Speech is found with faster-whisper's bundled Silero VAD, and each speech stretch is decoded on its own via `clip_timestamps`, with word timestamps on.
+     - This keeps word times true to the recording. faster-whisper's own `vad_filter` glues speech together, and that moved the first word after a silence back across it.
+     - A recording without speech skips the model entirely.
    - The model loads with `local_files_only=True` first, so routine runs never touch the network.
    - Transcript times are shifted by the audio/video `start_time` difference.
 3. **GPU.**
@@ -67,7 +70,7 @@ Turn one narrated screen recording (for example a Kooha WebM/MP4 of a web app) i
    - ffmpeg decodes the video to a 2 fps, 160 px wide grayscale pipe.
    - A change means at least 0.3% of pixels differ by more than 16 levels. This catches toasts, inline errors and menus, while cursor movement stays below it.
    - Consecutive changing samples (scrolling, video, animation) form one burst, captured at the first quiet sample after it, so the frame shows the settled UI.
-5. **Sections.** Consecutive transcript segments merge while the gap between them is under 1.5 s. A section splits at the next segment boundary once it passes about 30 s. Silent stretches that contain selected screen changes become "(no narration)" sections.
+5. **Sections.** Segments are first split wherever their word timings show a pause of 1.5 s or more, since Whisper can return one segment spanning two remarks. Consecutive segments then merge while the gap between them is under 1.5 s. A section splits at the next segment boundary once it passes about 30 s. Silent stretches that contain selected screen changes become "(no narration)" sections.
 6. **Frame selection.**
    - Candidates are speech starts, pointing words, settled screen changes, silent-stretch changes and the optional `--every N`.
    - Selection works by priority with suppression: a candidate within 1 s of one already chosen is dropped, unless a screen change lies between them.

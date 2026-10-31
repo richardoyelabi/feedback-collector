@@ -107,6 +107,17 @@ This adds NVIDIA's cuBLAS for CUDA 12 as a pip package. `feedback-collector` loa
 - `--device cpu` skips the GPU entirely. `--device cuda` fails instead of falling back.
 - The first run downloads the speech model (about 1.6 GB for `large-v3-turbo`) into `~/.cache/huggingface`. Later runs load it from there and never touch the network.
 
+## Performance
+
+Measured on an RTX 4070 Laptop GPU with `--model small`:
+
+| Recording | Result | Time |
+|---|---|---|
+| 5 minutes, narrated, 2560×1600 | 11 sections, 30 screenshots | 7 s |
+| 21 minutes, no narration, 2560×1600 | 126 screenshots | 22 s |
+
+Finding screen changes and extracting screenshots each take one pass over the video, about 10 s for 21 minutes of 2560×1600 footage. Recordings without speech skip the speech model entirely.
+
 ## Troubleshooting
 
 **The model download keeps failing.** On a slow or unstable connection the one-time download can break partway. huggingface_hub discards partial files, so each rerun starts from zero. You have two options:
