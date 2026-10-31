@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "feedback-collector"
+version = "0.1.0"
+description = "Turn narrated screen recordings into an interleaved transcript and screenshot report for Claude Code"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "faster-whisper>=1.2",
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+gpu = ["nvidia-cublas-cu12"]
+dev = ["pytest>=8"]
+
+[project.scripts]
+feedback-collector = "feedback_collector.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: runs the real speech model on $FEEDBACK_COLLECTOR_SAMPLE"]
+addopts = "-m 'not slow'"
