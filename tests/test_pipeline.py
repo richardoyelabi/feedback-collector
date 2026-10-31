@@ -6,6 +6,7 @@ import pytest
 from conftest import NARRATION, FakeTranscriber
 from feedback_collector.media import MediaError
 from feedback_collector.pipeline import Options, OutputExistsError, grab_frames, process
+from feedback_collector.transcription import ModelDownloadError
 
 
 def test_process_writes_interleaved_report(box_clip, tmp_path):
@@ -53,6 +54,22 @@ def test_force_replaces_only_own_files(box_clip, tmp_path):
     assert (out / "notes.txt").read_text() == "keep me"
     assert not (out / "frames" / "stale.png").exists()
     assert (out / "report.md").read_text() != "old"
+
+
+class FailingTranscriber:
+    def transcribe(self, video, offset=0.0):
+        raise ModelDownloadError("could not download speech model large-v3-turbo: network down")
+
+
+def test_force_keeps_the_old_report_when_the_run_fails(box_clip, tmp_path):
+    out = tmp_path / "out"
+    (out / "frames").mkdir(parents=True)
+    (out / "report.md").write_text("old")
+    (out / "frames" / "old.png").write_bytes(b"x")
+    with pytest.raises(ModelDownloadError):
+        process(box_clip, Options(out_dir=out, force=True), FailingTranscriber())
+    assert (out / "report.md").read_text() == "old"
+    assert (out / "frames" / "old.png").exists()
 
 
 def test_grab_frames_names_files_by_time(box_clip, tmp_path):

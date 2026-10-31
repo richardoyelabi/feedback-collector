@@ -37,16 +37,22 @@ def default_out_dir(video: Path) -> Path:
     return video.parent / f"{video.stem}-feedback"
 
 
-def prepare_out_dir(out_dir: Path, force: bool) -> None:
-    existing = [out_dir / name for name in OWN_FILES if (out_dir / name).exists()]
-    if existing and not force:
+def _own_files(out_dir: Path) -> list[Path]:
+    return [out_dir / name for name in OWN_FILES if (out_dir / name).exists()]
+
+
+def check_out_dir(out_dir: Path, force: bool) -> None:
+    if _own_files(out_dir) and not force:
         raise OutputExistsError(f"{out_dir} already has a report; pass --force to replace it")
-    for path in existing:
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+
+def remove_old_report(out_dir: Path) -> None:
+    for path in _own_files(out_dir):
         if path.is_dir():
             shutil.rmtree(path)
         else:
             path.unlink()
-    out_dir.mkdir(parents=True, exist_ok=True)
 
 
 def process(video: Path, options: Options, transcriber: Transcriber) -> Report:
@@ -57,7 +63,7 @@ def process(video: Path, options: Options, transcriber: Transcriber) -> Report:
             "Record with the microphone on."
         )
     out_dir = options.out_dir
-    prepare_out_dir(out_dir, options.force)
+    check_out_dir(out_dir, options.force)
 
     logger.info("Transcribing %s…", video.name)
     transcript = transcriber.transcribe(video, offset=info.audio_offset)
@@ -80,6 +86,8 @@ def process(video: Path, options: Options, transcriber: Transcriber) -> Report:
         if all(frame.path != path for frame in frames):
             frames.append(FrameRef(time, candidate.reason, candidate.label, path))
 
+    # Only now, with the slow and failure-prone steps done, does an old report make way for the new one.
+    remove_old_report(out_dir)
     logger.info("Extracting %d screenshots…", len(frames))
     extract_frames(video, info, [(frame.time, out_dir / frame.path) for frame in frames], options.frame_width)
 
