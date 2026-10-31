@@ -3,15 +3,32 @@
 from collections.abc import Sequence
 from dataclasses import replace
 
-from feedback_collector.models import Section, Segment
+from feedback_collector.models import Section, Segment, Word
 
 MAX_GAP = 1.5
 MAX_SECTION_LENGTH = 30.0
 
 
+def _split_at_pauses(segment: Segment, max_gap: float) -> list[Segment]:
+    # With VAD on, Whisper can return one segment that spans a long silence; word timing reveals it.
+    pieces: list[list[Word]] = []
+    for word in segment.words:
+        if pieces and word.start - pieces[-1][-1].end < max_gap:
+            pieces[-1].append(word)
+        else:
+            pieces.append([word])
+    if len(pieces) < 2:
+        return [segment]
+    return [
+        Segment(piece[0].start, piece[-1].end, " ".join(word.text for word in piece), tuple(piece))
+        for piece in pieces
+    ]
+
+
 def _group(segments: Sequence[Segment], max_gap: float, max_length: float) -> list[list[Segment]]:
+    pieces = [piece for segment in segments for piece in _split_at_pauses(segment, max_gap)]
     groups: list[list[Segment]] = []
-    for segment in sorted(segments, key=lambda s: s.start):
+    for segment in sorted(pieces, key=lambda s: s.start):
         if groups:
             group = groups[-1]
             group_start, group_end = group[0].start, group[-1].end

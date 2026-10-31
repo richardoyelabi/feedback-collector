@@ -1,4 +1,4 @@
-from feedback_collector.models import Section, Segment
+from feedback_collector.models import Section, Segment, Word
 from feedback_collector.sections import build_sections, section_index_at
 
 
@@ -49,6 +49,21 @@ def test_sections_are_contiguous():
 def test_section_text_and_speech_start():
     section = build_sections([seg(1.0, 2.0, " Hello "), seg(2.5, 3.0, "world. ")], duration=3.0)[0]
     assert (section.text, section.speech_start) == ("Hello world.", 1.0)
+
+
+def test_pause_inside_one_segment_splits_it_by_word_timing():
+    # With VAD on, Whisper can return one segment spanning two remarks 30 s apart.
+    words = (Word(10.0, 10.5, "Click"), Word(10.6, 11.0, "this."), Word(41.0, 41.5, "Date"), Word(41.6, 42.0, "field."))
+    sections = build_sections([Segment(10.0, 42.0, "Click this. Date field.", words)], duration=50.0)
+    assert spans(sections) == [
+        (0.0, 10.0, False),
+        (10.0, 11.0, True),
+        (11.0, 41.0, False),
+        (41.0, 42.0, True),
+        (42.0, 50.0, False),
+    ]
+    assert [s.text for s in sections if s.narrated] == ["Click this.", "Date field."]
+    assert sections[3].segments[0].words == words[2:]
 
 
 def test_section_index_at():
