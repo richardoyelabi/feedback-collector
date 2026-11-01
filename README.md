@@ -43,7 +43,7 @@ This writes `~/Videos/rec-feedback/` and prints a prompt to paste into Claude Co
 .venv/bin/feedback-collector frames ~/Videos/rec.webm --at 3:12.5,4:01
 ```
 
-This writes `~/Videos/rec-feedback/extra/00-03-12.5_extra.png` and similar, and prints each path. Times can be seconds (`192.5`), `M:SS` or `H:MM:SS`. The report tells Claude about this command, so Claude can run it itself when it needs a moment the report skipped.
+This writes `~/Videos/rec-feedback/extra/00-03-12.5_extra.png` and similar, and prints each path. Times can be seconds (`192.5`), `M:SS` or `H:MM:SS`. The report tells Claude about this command, so Claude can run it itself when it needs a moment the report skipped. The report's version starts with the full path of the Python that made the report (`"/path/to/.venv/bin/python" -m feedback_collector frames …`), so it works from your web app's repo even though `feedback-collector` isn't on your `PATH`.
 
 ## What you get
 
@@ -109,30 +109,34 @@ This adds NVIDIA's cuBLAS for CUDA 12 as a pip package. `feedback-collector` loa
 
 ## Performance
 
-Measured on an RTX 4070 Laptop GPU with `--model small`:
+Measured on a laptop with an RTX 4070 Laptop GPU and a 28-thread CPU, with the default `large-v3-turbo` model:
 
 | Recording | Result | Time |
 |---|---|---|
-| 5 minutes, narrated, 2560×1600 | 11 sections, 30 screenshots | 7 s |
-| 21 minutes, no narration, 2560×1600 | 126 screenshots | 22 s |
+| 5 minutes, narrated, 2560×1600 | 10 sections, 30 screenshots | 9.5 s on the GPU, 29 s with `--device cpu` |
+| 21 minutes, no narration, 2560×1600 | 126 screenshots | 25 s |
 
 Finding screen changes and extracting screenshots each take one pass over the video, about 10 s for 21 minutes of 2560×1600 footage. Recordings without speech skip the speech model entirely.
+
+The narration in that 5-minute clip was synthetic speech, 83 words long. `large-v3-turbo` got every word right apart from apostrophes and hyphens ("school's", "pop-up"). `--model small` took 7 s but misheard "picker" as "speaker".
 
 ## Troubleshooting
 
 **The model download keeps failing.** On a slow or unstable connection the one-time download can break partway. huggingface_hub discards partial files, so each rerun starts from zero. You have two options:
 
 - Use a smaller model: `--model small` (about 480 MB) or `--model base` (about 145 MB), instead of the default `large-v3-turbo` (about 1.6 GB).
-- Download the model folder yourself with a tool that resumes, then pass the folder to `--model`:
+- Download the model folder yourself with a tool that resumes, then pass the folder to `--model`. For the default model:
 
   ```bash
-  dest=~/.cache/feedback-collector/models/faster-whisper-small
+  dest=~/.cache/feedback-collector/models/faster-whisper-large-v3-turbo
   mkdir -p "$dest"
-  for f in config.json tokenizer.json vocabulary.txt model.bin; do
-    until curl -L -C - -o "$dest/$f" "https://huggingface.co/Systran/faster-whisper-small/resolve/main/$f"; do sleep 5; done
+  for f in config.json preprocessor_config.json tokenizer.json vocabulary.json model.bin; do
+    until curl -fL -C - -o "$dest/$f" "https://huggingface.co/mobiuslabsgmbh/faster-whisper-large-v3-turbo/resolve/main/$f"; do sleep 5; done
   done
   .venv/bin/feedback-collector process rec.webm --model "$dest"
   ```
+
+  For `small`, use the repository `Systran/faster-whisper-small` and the files `config.json tokenizer.json vocabulary.txt model.bin`.
 
 **"has no audio track".** The recording has no sound at all. Record again with the microphone on.
 
