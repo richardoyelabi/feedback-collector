@@ -8,7 +8,7 @@ from pathlib import Path
 
 from feedback_collector.media import MediaError
 from feedback_collector.pipeline import Options, OutputExistsError, default_out_dir, grab_frames, process
-from feedback_collector.report import handoff_prompt, visible_sections
+from feedback_collector.report import handoff_prompt, plural, visible_sections
 from feedback_collector.timefmt import parse_time
 from feedback_collector.transcription import (
     DEFAULT_MODEL,
@@ -100,8 +100,8 @@ def main(
     report_path = report.out_dir / "report.md"
     print(f"Report: {report_path}")
     print(
-        f"{len(report.frames)} screenshots in {len(visible_sections(report))} sections "
-        f"(cap {report.cap}, {report.candidate_count} candidates)"
+        f"{plural(len(report.frames), 'screenshot')} in {plural(len(visible_sections(report)), 'section')} "
+        f"(cap {report.cap}, {plural(report.candidate_count, 'candidate')})"
     )
     print()
     print("Paste into Claude Code:")

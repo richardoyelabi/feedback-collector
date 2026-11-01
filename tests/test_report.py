@@ -1,5 +1,6 @@
 import dataclasses
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -43,7 +44,15 @@ def test_header_counts_and_reader_notes(report):
         "`6:42` · `3 sections` · `3 screenshots (cap 40) of 57 candidates` · "
         "transcript: faster-whisper large-v3-turbo (cuda), **not reviewed by a human**"
     ) in text
-    assert 'Run `feedback-collector frames "/videos/rec.webm" --at 03:12.5 --out "/videos/rec-feedback/extra"`.' in text
+    assert (
+        f'Run `"{sys.executable}" -m feedback_collector frames "/videos/rec.webm" '
+        '--at 03:12.5 --out "/videos/rec-feedback/extra"`.'
+    ) in text
+
+
+def test_header_counts_in_the_singular(report):
+    single = dataclasses.replace(report, frames=report.frames[:1], candidate_count=1)
+    assert "`1 screenshot (cap 40) of 1 candidate`" in render_markdown(single)
 
 
 def test_sections_interleave_quotes_and_frames(report):

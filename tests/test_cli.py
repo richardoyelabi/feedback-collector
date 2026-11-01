@@ -1,4 +1,7 @@
+import re
 import shutil
+import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -26,6 +29,12 @@ def test_process_command_prints_report_and_prompt(box_clip, tmp_path, capsys):
     assert f'Read "{out / "report.md"}" and open every screenshot it lists.' in stdout
 
 
+def test_summary_line_counts_in_the_singular(box_clip, tmp_path, capsys):
+    code = main(["process", str(box_clip), "--out", str(tmp_path / "out")], transcriber_factory=lambda args: FakeTranscriber(()))
+    assert code == 0
+    assert "1 screenshot in 1 section (cap 20, 1 candidate)" in capsys.readouterr().out
+
+
 def test_default_out_dir_is_next_to_video(box_clip, tmp_path):
     video = tmp_path / "rec.webm"
     shutil.copy(box_clip, video)
@@ -39,6 +48,15 @@ def test_frames_command(box_clip, tmp_path, capsys):
         str(tmp_path / "extra" / "00-00-01.0_extra.png"),
         str(tmp_path / "extra" / "00-00-03.5_extra.png"),
     ]
+
+
+def test_report_hint_runs_from_anywhere_without_the_tool_on_path(box_clip, tmp_path):
+    out = tmp_path / "out"
+    assert main(["process", str(box_clip), "--out", str(out)], transcriber_factory=fake) == 0
+    hint = re.search(r"Need another moment\? Run `(.+)`\.", (out / "report.md").read_text()).group(1)
+    only_ffmpeg = {"PATH": str(Path(shutil.which("ffmpeg")).parent)}
+    subprocess.run(hint, shell=True, cwd=tmp_path, env=only_ffmpeg, check=True, capture_output=True)
+    assert (out / "extra" / "00-03-12.5_extra.png").exists()
 
 
 def test_errors_exit_with_message(silent_clip, tmp_path, capsys):

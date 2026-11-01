@@ -87,6 +87,7 @@ Turn one narrated screen recording (for example a Kooha WebM/MP4 of a web app) i
     - The default is `<video dir>/<stem>-feedback/`, and `--out` overrides it. Frames are named like `frames/00-01-23.4_speech.png`.
     - `--force` replaces only the tool's own files (`report.md`, `report.json`, `transcript.vtt`, `frames/`) and keeps anything else in the folder.
     - An existing report is refused before any work starts. With `--force`, it's removed only once transcription and frame selection have succeeded, so a failed run leaves it intact.
+    - The report's `frames` hint names the interpreter that made the report (`"<python>" -m feedback_collector frames …`). Claude runs it from the web app's repo, where a venv-installed `feedback-collector` isn't on `PATH`.
 
 ## `report.md` shape
 
@@ -96,7 +97,7 @@ Turn one narrated screen recording (for example a Kooha WebM/MP4 of a web app) i
 
 **How to read this:** sections are in recording order. Open every screenshot (paths are relative to this file) before acting.
 Narration is speech-to-text and may mishear names; where words and screenshots disagree, trust the screenshots.
-Need another moment? Run `feedback-collector frames "/home/richard/Videos/rec-2026-10-30.webm" --at 03:12.5 --out "/home/richard/Videos/rec-2026-10-30-feedback/extra"`.
+Need another moment? Run `"/home/richard/code/personal/feedback_collector/.venv/bin/python" -m feedback_collector frames "/home/richard/Videos/rec-2026-10-30.webm" --at 03:12.5 --out "/home/richard/Videos/rec-2026-10-30-feedback/extra"`.
 
 ## 00:12–00:27
 > So this button is confusing, I expected it to submit the form but nothing happened.

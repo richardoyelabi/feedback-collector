@@ -1,6 +1,7 @@
 """Render a processed recording as Markdown, JSON and WebVTT."""
 
 import json
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from feedback_collector.sections import section_index_at
 from feedback_collector.timefmt import clock, clock_precise, duration_label, vtt_time
 
 
-def _plural(count: int, noun: str) -> str:
+def plural(count: int, noun: str) -> str:
     return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
 
 
@@ -28,11 +29,15 @@ def _header(report: Report, section_count: int) -> str:
     transcript = report.transcript
     stats = " · ".join([
         f"`{duration_label(report.duration)}`",
-        f"`{_plural(section_count, 'section')}`",
-        f"`{_plural(len(report.frames), 'screenshot')} (cap {report.cap}) of {report.candidate_count} candidates`",
+        f"`{plural(section_count, 'section')}`",
+        f"`{plural(len(report.frames), 'screenshot')} (cap {report.cap}) of {plural(report.candidate_count, 'candidate')}`",
         f"transcript: faster-whisper {transcript.model} ({transcript.device}), **not reviewed by a human**",
     ])
-    hint = f'feedback-collector frames "{report.video}" --at 03:12.5 --out "{report.out_dir / "extra"}"'
+    # Claude runs this from the web app's repo, where a venv-installed `feedback-collector` is not on PATH.
+    hint = (
+        f'"{sys.executable}" -m feedback_collector frames "{report.video}" '
+        f'--at 03:12.5 --out "{report.out_dir / "extra"}"'
+    )
     return "\n".join([
         f"# Feedback walkthrough: {report.video.name}",
         stats,
